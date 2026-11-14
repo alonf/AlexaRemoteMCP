@@ -1,0 +1,30 @@
+{
+  "name": "alexa-connectivity-proof",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal Milestone A connectivity proof; not an MCP server.",
+  "engines": {
+    "node": ">=24.13.0 <25"
+  },
+  "scripts": {
+    "postinstall": "patch-package --error-on-fail",
+    "build": "tsc -p tsconfig.json",
+    "proof": "node dist/src/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "scan:secrets": "gitleaks dir --redact=100 --no-banner ."
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.14.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2"
+  },
+  "dependencies": {
+    "alexa-cookie2": "5.0.6",
+    "alexa-remote2": "8.1.1",
+    "patch-package": "8.0.1"
+  }
+}

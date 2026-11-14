@@ -1,0 +1,113 @@
+diff --git a/node_modules/alexa-remote2/alexa-remote.js b/node_modules/alexa-remote2/alexa-remote.js
+index f90b5e6..9f913da 100644
+--- a/node_modules/alexa-remote2/alexa-remote.js
++++ b/node_modules/alexa-remote2/alexa-remote.js
+@@ -105,6 +105,14 @@ const SmartHomeEndpointsGraphQlQuery = `query Endpoints {
+ 
+ class AlexaRemote extends EventEmitter {
+ 
++    static get connectivityProofPatchVersion() {
++        return 1;
++    }
++
++    static get connectivityProofAuthGuardVersion() {
++        return 1;
++    }
++
+     constructor() {
+         super();
+ 
+@@ -210,6 +218,9 @@ class AlexaRemote extends EventEmitter {
+ 
+         const self = this;
+         function getCookie(callback) {
++            if (!self.cookie && self._options.proofNoImplicitAuth) {
++                return callback(new Error('Implicit login disabled'));
++            }
+             if (!self.cookie) {
+                 self._options.logger && self._options.logger('Alexa-Remote: No cookie given, generate one');
+                 self._options.cookieJustCreated = true;
+@@ -235,6 +246,7 @@ class AlexaRemote extends EventEmitter {
+                         if (err || !res) {
+                             self._options.logger && self._options.logger('Alexa-Remote: Error from refreshing cookies');
+                             self.cookie = null;
++                            if (self._options.proofNoImplicitAuth) return callback(new Error('Refresh failed'));
+                             return getCookie(callback); // error on refresh
+                         }
+                         self.setCookie(res); // update
+@@ -261,6 +273,9 @@ class AlexaRemote extends EventEmitter {
+                 }
+                 this._options.logger && this._options.logger(`Alexa-Remote: Authentication checked: ${authenticated}`);
+                 if ((!authenticated && !this._options.cookieJustCreated) || !this.macDms) {
++                    if (this._options.proofNoImplicitAuth) {
++                        return callback && callback(new Error('Authentication rejected'));
++                    }
+                     this._options.logger && !this.macDms && this._options.logger('Alexa-Remote: JWT missing, forcing a refresh ...');
+                     this._options.logger && this._options.logger('Alexa-Remote: Cookie was set, but authentication invalid');
+                     delete this._options.cookie;
+@@ -274,7 +289,7 @@ class AlexaRemote extends EventEmitter {
+                     clearTimeout(this.cookieRefreshTimeout);
+                     this.cookieRefreshTimeout = null;
+                 }
+-                if (this._options.cookieRefreshInterval) {
++                if (this._options.cookieRefreshInterval && !this._options.proofNoImplicitAuth) {
+                     this.cookieRefreshTimeout = setTimeout(() => {
+                         this.cookieRefreshTimeout = null;
+                         this._options.cookie = this.cookieData;
+@@ -1199,6 +1214,9 @@ class AlexaRemote extends EventEmitter {
+                 this._options.logger && this._options.logger(`Alexa-Remote: Authentication check returned error: ${err}. Still try request`);
+                 return this.httpsGetCall(path, callback, flags);
+             }
++            if (this._options.proofNoImplicitAuth) {
++                return callback && callback(new Error('Authentication rejected'));
++            }
+             this._options.logger && this._options.logger('Alexa-Remote: Authentication check Error, try re-init');
+             delete this._options.csrf;
+             delete this._options.cookie;
+@@ -1227,6 +1245,12 @@ class AlexaRemote extends EventEmitter {
+ 
+     httpsGetCall(path, callback, flags = {}) {
+         const handleResponse = (err, res, body) => {
++            if (flags.proofSafeWrite) {
++                if (err || !res || typeof res.statusCode !== 'number' || res.statusCode < 200 || res.statusCode >= 300 || (!body && !flags.proofEmptyBodyOk) ||
++                    (body && (body.includes('ThrottlingException') || body.includes('Rate exceeded') || body.includes('Too many requests')))) {
++                    return callback(new Error('Uncertain write response'), null);
++                }
++            }
+             if (!err && typeof res.statusCode === 'number' && res.statusCode === 401) {
+                 this._options.logger && this._options.logger('Alexa-Remote: Response: 401 Unauthorized');
+                 return callback(new Error('401 Unauthorized'), null);
+@@ -2520,7 +2544,9 @@ class AlexaRemote extends EventEmitter {
+                 deviceType: dev.deviceType,
+                 enabled: enabled
+             }),
+-            method: 'PUT'
++            method: 'PUT',
++            proofSafeWrite: true,
++            isRetry: true
+         };
+         this.httpsGet(`/api/dnd/status`, callback, flags);
+     }
+@@ -3072,7 +3098,10 @@ class AlexaRemote extends EventEmitter {
+             callback,
+             {
+                 method: 'POST',
+-                data: JSON.stringify(reqObj)
++                data: JSON.stringify(reqObj),
++                proofSafeWrite: true,
++                proofEmptyBodyOk: true,
++                isRetry: true
+             }
+         );
+     }
+@@ -3644,7 +3673,9 @@ class AlexaRemote extends EventEmitter {
+             method: 'PUT',
+             data: JSON.stringify ({
+                 'controlRequests': reqArr
+-            })
++            }),
++            proofSafeWrite: true,
++            isRetry: true
+         };
+         this.httpsGet(`/api/phoenix/state`, callback, flags);
+         /*

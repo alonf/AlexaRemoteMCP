@@ -1,0 +1,23 @@
+schema: spec-driven
+githubCopilot:
+  cloudAgent: false
+context: |
+  REQUIREMENTS.md is the product baseline. Read it in full before planning; do not narrow its full single-instance MVP into only a connectivity demo.
+  Build an independent Node.js/TypeScript Streamable HTTP MCP server using alexa-remote2, not the existing stdio project's code or subprocess.
+  HA means high availability, not Home Assistant. No HA, Dapr, Kubernetes, Aspire, brokers or distributed runtime in the MVP.
+  Source inspection is not live Alexa/Alexa+ certification. Keep proposed, implemented and verified capability states distinct.
+  Start with requirements Milestone A connectivity risk reduction before broad implementation. Owner authorization is required for live-account actions.
+  Preserve REQUIREMENTS.md. Trace changes to its requirement IDs and acceptance criteria. Never copy secrets or private household information into artifacts.
+rules:
+  proposal:
+    - State scope, non-goals and requirement references; distinguish this milestone from the complete MVP.
+  specs:
+    - Include observable success, failure, uncertainty and authorization scenarios.
+  design:
+    - Address credentials, unsafe retries, failure recovery, privacy and explicit unresolved decisions.
+  tasks:
+    - Tests are mandatory, not optional. Keep unperformed work unchecked and separate automated checks from owner-approved live tests.
+operations:
+  apply:
+    guidance:
+      - Do not dispatch live Alexa actions or publish support claims without the required owner approval and validation evidence.

@@ -1,0 +1,106 @@
+# Dependencies and package-manager caches (commit the chosen lockfile)
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.pnp.*
+
+# Build, test and tool output
+/dist/
+/build/
+/out/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.eslintcache
+.cache/
+.turbo/
+playwright-report/
+test-results/
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+report.*.json
+*.tgz
+
+# Local environment and credentials; sanitized templates may be committed
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.local
+*.local.*
+.npmrc.local
+
+# Alexa account/session data must normally live OUTSIDE this repository.
+# These are defense-in-depth rules for accidental local copies.
+/.alexa/
+/.alexa-remote/
+/.alexa-remote-mcp/
+/.secrets/
+/secrets/
+/credentials/
+/sessions/
+/private/
+/local/
+/runtime/
+/data/
+/tmp/
+/temp/
+/cookie.json
+/cookies.json
+/alexa-cookie.json
+/alexa-cookies.json
+/alexa-session.json
+/credentials.json
+/tokens.json
+/session.json
+/approvals.json
+/owner-approval.json
+/owner-approvals.json
+/device-mapping.json
+/identity-mapping.json
+/owner-approval*.json
+/approval*.json
+/device-mapping*.json
+/identity-mapping*.json
+/evidence-mapping*.json
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.key
+*.pfx
+*.p12
+
+# Machine-specific assistant/IDE state, not shared OpenSpec skills/prompts
+.claude/settings.local.json
+.codex/sessions/
+.codex/log/
+.codex/auth.json
+.copilot/session-state/
+.vs/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Keep openspec/, .github/, .agents/ and .claude/ skills/commands versioned.
+# Keep source, tests, sanitized fixtures and package lockfiles versioned.
+# .gitignore does not protect already tracked files or replace secret scanning.
