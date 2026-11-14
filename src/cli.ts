@@ -178,6 +178,15 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
         deps.print(JSON.stringify(skeleton(await adapter.deviceState(rest[0] ?? '', rest[1]))));
         return 0;
       }
+      case 'groups-shape': {
+        const skeleton = (v: unknown, depth = 0): unknown => {
+          if (Array.isArray(v)) return depth > 4 ? 'array' : { arrayLength: v.length, first: v.slice(0, 1).map((x) => skeleton(x, depth + 1)) };
+          if (isRecord(v)) return depth > 4 ? 'object' : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, skeleton(x, depth + 1)]));
+          return typeof v;
+        };
+        deps.print(JSON.stringify(skeleton(await adapter.smartHomeGroups())));
+        return 0;
+      }
       case 'dnd-read':
         await emit({ fetchedAt: deps.now().toISOString(), devices: await dndBackend(adapter).read() });
         return 0;
@@ -253,6 +262,7 @@ async function prepareLive(command: string | undefined, rest: string[], deps: Cl
     state: { probe: 'state-read', targets: [rest[0] ?? ''], args: { id: rest[0] } },
     shape: { probe: 'state-read', targets: [rest[0] ?? ''], args: { id: rest[0] } },
     'dnd-read': { probe: 'dnd-read', targets: ['dnd'], args: {} },
+    'groups-shape': { probe: 'inventory-read', targets: ['inventory'], args: {} },
     'dnd-apply': { probe: 'dnd-write', targets: rest.slice(1), args: { desired: rest[0] === 'true' } },
     'dnd-restore': { probe: 'dnd-restore', targets: ['snapshot'], args: { ownerDirected: rest.includes('--owner-directed') } },
     'routine-inspect': { probe: 'routine-inspect', targets: [rest[0] ?? ''], args: {} },

@@ -12,7 +12,7 @@ not a compatibility or support claim.
 | Refresh | Works | `refresh` reported `usable`, rewrote the session file; a new process then read data with the saved session. |
 | Restart | Works | Every CLI run is a fresh process loading the saved session. Expiry/revocation was not observed. |
 | Inventory read | Works | 36 Echo devices, about 270 smart-home entries, 70 routines. |
-| Groups read | Unexpected shape | Reported `unexpected_shape`; not investigated further. |
+| Groups read | Works after a parser fix | 19 groups, all of kind `SPACE` (rooms). The response key is `applianceGroups`; the parser had expected `groups`. |
 | DND read | Works | 35 devices, all off before the test. |
 | Device state read | Works after a skill fix | See findings 1 and 2. Fresh `OK` health and `powerState` returned. |
 | Harmless mutation (light on/off) | Works | `turnOn` and `turnOff` `accepted`; readback `verified`. Several calls returned `unknown`, see finding 3. |
@@ -59,5 +59,5 @@ Go, conditional on:
   verification by readback) given finding 3;
 - rate and timeout behavior investigated, including the skill's cold start;
 - reassessing every unofficial interface before any support claim;
-- the groups shape, DND native duration, event connection, Linux permissions
+- the DND native duration, event connection, Linux permissions
   and expiry/revocation remaining untested.

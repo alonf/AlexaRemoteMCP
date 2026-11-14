@@ -14,7 +14,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const LIST_KEYS: Record<FamilyName, string[]> = {
   echo: ['devices'],
   smartHome: ['smarthomeDevices', 'devices'],
-  groups: ['groups', 'smarthomeGroups'],
+  groups: ['applianceGroups', 'groups', 'smarthomeGroups'],
   routines: ['automations', 'routines'],
 };
 

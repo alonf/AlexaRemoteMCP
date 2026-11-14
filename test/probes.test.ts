@@ -31,6 +31,8 @@ test('inventory reports each family independently with counts, kinds and failure
   assert.ok(!JSON.stringify(result).includes('private'));
   const empty = await readInventory(reader({ echoDevices: async () => ({ devices: [] }) }));
   assert.deepEqual(empty.families.echo, { status: 'empty' });
+  const live = await readInventory(reader({ smartHomeGroups: async () => ({ applianceGroups: [{ type: 'GROUP_A' }, { type: 'GROUP_A' }] }) }));
+  assert.deepEqual(live.families.groups, { status: 'ok', count: 2, kinds: { GROUP_A: 2 } });
 });
 
 test('state read reports value, source time, age, and unknown for missing fields', () => {
