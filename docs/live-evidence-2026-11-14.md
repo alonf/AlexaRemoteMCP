@@ -50,6 +50,20 @@ not a compatibility or support claim.
    setpoint but no current room temperature. Mutating that class stays blocked.
 7. **Hard-coded locale.** The library's routine call sends a hard-coded `de-DE`
    locale in the sequence JSON; routines still ran.
+8. **Skill latency (cause of the slow or `unknown` responses).** The skill's
+   Lambda log for the preceding six hours showed warm invocations of 0.5 to 2
+   seconds and cold invocations of 3 to 10 seconds, with Init Duration only
+   about 0.3 seconds. In a 10-second example, the first call to the home gateway
+   took 8.6 seconds and the next two about 0.15 seconds each, so the cost is
+   in the first request on a new instance, not in Lambda init. The function had
+   256 MB, which is a small CPU share. Alexa expects a smart-home reply in
+   roughly 8 seconds. Memory was raised to 1024 MB; the first cold invocation
+   afterwards took 1.5 seconds (one sample, not conclusive). Separately, the
+   skill's retry policy waits a fixed 10 seconds between attempts and its HTTP
+   timeout is 10 seconds, both longer than Alexa's window. Alexa state reads
+   are often served from its own cache (observed age of about 57 minutes) and
+   can take 55 to 70 seconds and return `compatibility_error` right after a
+   Lambda configuration change.
 
 ## Go/no-go for Milestone B
 
