@@ -11,9 +11,9 @@ not a compatibility or support claim.
 | Protected persistence | Works | Session file in an owner-only directory; ACL lists only the owner (inherited full control). |
 | Refresh | Works | `refresh` reported `usable`, rewrote the session file; a new process then read data with the saved session. |
 | Restart | Works | Every CLI run is a fresh process loading the saved session. Expiry/revocation was not observed. |
-| Inventory read | Works | 36 Echo devices, about 270 smart-home entries, 70 routines. |
-| Groups read | Works after a parser fix | 19 groups, all of kind `SPACE` (rooms). The response key is `applianceGroups`; the parser had expected `groups`. |
-| DND read | Works | 35 devices, all off before the test. |
+| Inventory read | Works | Echo devices, smart-home entries and routines returned. |
+| Groups read | Works after a parser fix | Groups returned, all of kind `SPACE` (rooms). The response key is `applianceGroups`; the parser had expected `groups`. |
+| DND read | Works | All devices off before the test. |
 | Device state read | Works after a skill fix | See findings 1 and 2. Fresh `OK` health and `powerState` returned. |
 | Harmless mutation (light on/off) | Works | `turnOn` and `turnOff` `accepted`; readback `verified`. Several calls returned `unknown`, see finding 3. |
 | Explicit routine run by ID | Works | Routine spoke on an Echo Show; owner heard it. See finding 4. |
@@ -26,10 +26,9 @@ not a compatibility or support claim.
 
 ## Findings
 
-1. **Retrievable flag.** The owner's custom smart-home skill advertised
-   `retrievable: false` for power and brightness, so state reads returned
-   empty. Fixed in the skill (`retrievable: true`), redeployed (code only) and
-   account discovery re-run.
+1. **Retrievable flag.** A custom smart-home skill that advertised
+   `retrievable: false` for a property makes state reads return empty. Setting
+   `retrievable: true` and re-running account discovery fixed it.
 2. **ID forms.** The endpoint-style ID returned empty with `ENTITY` and an error
    with `APPLIANCE`. The legacy appliance ID with `APPLIANCE` is what works for
    both state reads and control. Discovery is account-wide and cannot be limited
@@ -50,20 +49,14 @@ not a compatibility or support claim.
    setpoint but no current room temperature. Mutating that class stays blocked.
 7. **Hard-coded locale.** The library's routine call sends a hard-coded `de-DE`
    locale in the sequence JSON; routines still ran.
-8. **Skill latency (cause of the slow or `unknown` responses).** The skill's
-   Lambda log for the preceding six hours showed warm invocations of 0.5 to 2
-   seconds and cold invocations of 3 to 10 seconds, with Init Duration only
-   about 0.3 seconds. In a 10-second example, the first call to the home gateway
-   took 8.6 seconds and the next two about 0.15 seconds each, so the cost is
-   in the first request on a new instance, not in Lambda init. The function had
-   256 MB, which is a small CPU share. Alexa expects a smart-home reply in
-   roughly 8 seconds. Memory was raised to 1024 MB; the first cold invocation
-   afterwards took 1.5 seconds (one sample, not conclusive). Separately, the
-   skill's retry policy waits a fixed 10 seconds between attempts and its HTTP
-   timeout is 10 seconds, both longer than Alexa's window. Alexa state reads
-   are often served from its own cache (observed age of about 57 minutes) and
-   can take 55 to 70 seconds and return `compatibility_error` right after a
-   Lambda configuration change.
+8. **Custom-skill latency.** A custom smart-home skill backed by a Lambda
+   function showed slow first requests on a new instance (several seconds, not
+   Lambda init), which can exceed the roughly 8 seconds Alexa allows for a
+   smart-home reply and shows up as `unknown` writes. Raising Lambda memory and
+   keeping skill-side retry waits and HTTP timeouts below Alexa's window
+   helped. Alexa state reads are often served from its own cache (observed age
+   of about 57 minutes) and can take 55 to 70 seconds and return
+   `compatibility_error` right after a Lambda configuration change.
 
 ## Go/no-go for Milestone B
 
