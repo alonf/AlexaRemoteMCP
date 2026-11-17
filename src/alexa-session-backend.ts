@@ -26,6 +26,7 @@ const REJECTION = /No new access token|No former registration data|Authenticatio
 
 function classify(error: unknown): Error {
   const message = error instanceof Error ? error.message : '';
+  if (process.env.ALEXA_DIAG === '1') console.log(`Alexa backend failure: ${message.replace(/[A-Za-z0-9_\-.]{40,}/g, '<redacted>').slice(0, 160)}`);
   return REJECTION.test(message) ? new ReauthenticationRequiredError() : new Error('Session backend failed');
 }
 

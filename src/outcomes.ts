@@ -7,6 +7,7 @@ export type OutcomeStatus =
   | 'verified'
   | 'failed'
   | 'partially_applied'
+  | 'superseded'
   | 'unknown';
 
 export interface TargetOutcome {
@@ -72,7 +73,8 @@ export function normalizeWrite(
   response: WriteResponse,
   interpret: (body: unknown) => Outcome,
 ): Outcome {
-  if (response.status === 'not_dispatched') return { status: 'not_dispatched' };
+  // Amazon refused with 429 before the skill was called, so nothing ran.
+  if (response.status === 'not_dispatched' || response.status === 'rate_limited') return { status: 'not_dispatched' };
   if (response.status === 'unknown') return { status: 'unknown' };
   return interpret(response.body);
 }

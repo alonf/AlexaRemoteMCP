@@ -1,3 +1,4 @@
+import type { AlexaPort } from './ports.js';
 import { awaitWriteResponse } from './write-outcome.js';
 
 type Callback = (error: Error | null, body?: unknown) => void;
@@ -10,7 +11,7 @@ export interface AlexaProbeClient {
   querySmarthomeDevices(ids: string[], type: string, timeout: number, callback: Callback): void;
   getDoNotDisturb(callback: Callback): void;
   discoverSmarthomeDevice(callback: Callback): void;
-  executeSmarthomeDeviceAction(ids: string[], parameters: unknown[], type: string, callback: Callback): void;
+  executeSmarthomeDeviceAction(ids: string[], parameters: unknown, type: string, callback: Callback): void;
   executeAutomationRoutine(device: string, routine: object, callback: Callback): void;
   setDoNotDisturb(device: string, enabled: boolean, callback: Callback): void;
 }
@@ -25,7 +26,7 @@ function read(invoke: (callback: Callback) => void): Promise<unknown> {
   });
 }
 
-export class AlexaAdapter {
+export class AlexaAdapter implements AlexaPort {
   constructor(private readonly client: AlexaProbeClient) {}
 
   echoDevices(): Promise<unknown> {
@@ -56,7 +57,7 @@ export class AlexaAdapter {
     return read((callback) => this.client.discoverSmarthomeDevice(callback));
   }
 
-  controlDevice(id: string, parameters: unknown[]) {
+  controlDevice(id: string, parameters: unknown) {
     return awaitWriteResponse((callback) => this.client.executeSmarthomeDeviceAction(
       [id], parameters, 'APPLIANCE', callback,
     ));
