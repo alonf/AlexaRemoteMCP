@@ -43,7 +43,7 @@
 
 ## 7. Integration and owner-approved live evidence
 
-- [ ] 7.1 End-to-end test: example client to issuer to MCP to policy to journal to fake adapter, covering success, failure, uncertainty and authorization cases; verify the full suite passes in CI
+- [x] 7.1 End-to-end test: example client to issuer to MCP to policy to journal to fake adapter, covering success, failure, uncertainty and authorization cases; verify the full suite passes in CI
 - [ ] 7.2 Owner-approved window: seed the session to Key Vault and read inventory from the cloud instance; record sanitized evidence of session survival and refresh from the cloud address; also run `scripts/sqlite-spike.mjs` on the App Service `/home` share
 - [x] 7.3 Owner-approved window: run the single mutation on the allow-listed target; record the sanitized outcome and journal record
 - [ ] 7.4 Connect ChatGPT and Claude through the authorization flow; record sanitized compatibility notes, including DCR versus CIMD
