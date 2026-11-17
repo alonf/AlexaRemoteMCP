@@ -38,8 +38,16 @@ The service refuses to start if a required setting is missing and names only the
      entraTenantId=<tenant> entraClientId=<client> approvedRedirectUris=<comma-separated URIs>
    ```
 
-3. Store the Entra client secret in the vault as `entra-client-secret` (your account needs
-   *Key Vault Secrets Officer* for this step).
+3. Store the Entra client secret in the vault as `entra-client-secret`. Your account needs
+   *Key Vault Secrets Officer* on the vault, which the deployment does not grant to you:
+
+   ```powershell
+   az role assignment create --assignee-object-id (az ad signed-in-user show --query id -o tsv) `
+     --assignee-principal-type User --role "Key Vault Secrets Officer" `
+     --scope (az keyvault show -n <vault> --query id -o tsv)
+   ```
+
+   Role assignments take about a minute to propagate; a `Forbidden` error right after the grant is normal.
 4. Set `OWNER_ACCOUNT_ID` and, when ready for the mutation window, `MUTATION_ALLOWED_TARGETS`:
 
    ```powershell
@@ -49,8 +57,10 @@ The service refuses to start if a required setting is missing and names only the
 5. Publish the build. Stage `dist`, `package.json`, `package-lock.json` and `patches`, run
    `npm ci --omit=dev` in the staging folder (this applies the required upstream auth-guard patch;
    without `patches` the service fails closed and `/readyz` stays 503), zip it and deploy with
-   `az webapp deploy --type zip --async true`. The first start takes several minutes. Check
-   `GET /healthz` returns 200 and `GET /readyz` returns 200 once the session is seeded.
+   `az webapp deploy --type zip --async true`. The first start takes several minutes, and the CLI may
+   still print a startup warning or exit non-zero; judge the result by the endpoints, not the CLI.
+   Check `GET /healthz` returns 200 and `GET /readyz` returns 200 once the session is seeded (503
+   before that is expected).
    Set `ALEXA_DIAG=1` temporarily to log a redacted backend failure message.
 
 ## Seed or re-seed the Alexa session (reauthentication)

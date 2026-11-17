@@ -39,7 +39,7 @@
 - [x] 6.2 Write Bicep for App Service, Key Vault, managed identity and settings, with no secrets; verify `az bicep build`, a what-if run and the secret scan
 - [x] 6.3 Add public liveness and coarse readiness endpoints; verify an anonymous response holds no account, device or session detail
 - [x] 6.5 Add the server entrypoint `src/server.ts` that wires configuration, Key Vault session store, issuer, owner sign-in, mutation service and HTTP server; verify with a boot test using fakes and a failure when required settings are missing
-- [ ] 6.4 Document deploy, restart, rollback and reauthentication in `docs/`; verify by following the steps in a throwaway resource group
+- [x] 6.4 Document deploy, restart, rollback and reauthentication in `docs/`; verify by following the steps in a throwaway resource group
 
 ## 7. Integration and owner-approved live evidence
 

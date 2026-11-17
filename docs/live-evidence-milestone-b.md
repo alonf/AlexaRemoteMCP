@@ -49,6 +49,24 @@ allow-listed light, set only in private configuration.
 rounds of a writer killed mid-run, each reopened with `integrity=ok` and every acknowledged row present. Result: PASS.
 The spike files were removed afterwards.
 
+## Clean-room documentation check (task 6.4)
+
+`docs/cloud-deployment.md` was followed literally in a throwaway resource group with placeholder Entra values and a
+dummy session; the group was deleted afterwards.
+
+- Bicep deployment succeeded and created the vault, plan and site.
+- Doc gap found and fixed: storing the Entra secret failed with `Forbidden` until the deploying account was granted
+  *Key Vault Secrets Officer*; the document now gives the command.
+- Staging, `npm ci --omit=dev` and zip deploy worked. The CLI printed a startup warning although the site came up;
+  the document now says to judge by `/healthz`. `/healthz` returned 200 and `/readyz` 503, as expected before a session.
+- Reauthentication step: a (dummy) `alexa-session` secret plus restart left `/healthz` 200 and `/readyz` 503, so the
+  service fails closed on an unusable session.
+- Restart and redeploy (rollback) worked, and `journal.sqlite` and `oidc.sqlite` on `/home/data` kept their original
+  timestamps across both.
+- Not exercised in the clean room: Entra sign-in and a real Amazon session. Both were exercised on the real deployment.
+- Key Vault purge protection means the deleted vault stays soft-deleted for the retention period; its name is unique
+  to that resource group, so nothing collides.
+
 ## Not shown
 
 - Session refresh from the cloud address. The 6-hour refresh timer restarts on every deploy and has not yet run
