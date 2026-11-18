@@ -88,6 +88,7 @@ async function load() {
   const data = result.body;
   rows = (data.devices || []).map((d) => fromEntry(d.id, d.name, d.kind, d.capabilities || [], d.catalog, { unsupported: d.supported === false, readOnly: d.writable === false }));
   for (const c of data.catalogOnly || []) rows.push(fromEntry(c.id, '(not in Alexa now) ' + c.id, '', [], c.catalog));
+  renderSpeakers(data.speakers || []);
   if (data.status && data.status !== 'ok') setStatus('Alexa inventory unavailable (' + (data.health || data.reason || data.status) + '); showing the catalog only.', true);
   else setStatus('Loaded ' + rows.length + ' devices.');
   render();
@@ -122,6 +123,47 @@ function operationsCell(d, locked) {
 }
 
 const timers = new Map();
+let speakerRows = [];
+function renderSpeakers(list) {
+  speakerRows = list;
+  const body = $('speakers');
+  body.textContent = '';
+  for (const s of list) {
+    const f = s.flags || {};
+    const tr = body.insertRow();
+    tr.insertCell().textContent = s.name + (s.online ? '' : ' (offline)');
+    const save = () => {
+      const speaker = {};
+      for (const k of ['announce', 'urgent', 'volume']) if (f[k]) speaker[k] = true;
+      if (typeof f.volumeMax === 'number') speaker.volumeMax = f.volumeMax;
+      if (f.features && f.features.length) speaker.features = f.features;
+      clearTimeout(timers.get(s.id));
+      setStatus('Saving...');
+      timers.set(s.id, setTimeout(async () => {
+        try {
+          const result = await api('PATCH', '/admin/api/catalog', JSON.stringify({ set: { [s.id]: { category: 'other', speaker } } }));
+          if (result.ok) setStatus('Saved (backed up before the change).');
+          else setStatus('Not saved: ' + (result.body.reason || result.body.error || result.status), true);
+        } catch (error) { fail(error); }
+      }, 400));
+    };
+    for (const k of ['announce', 'urgent', 'volume']) {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = !!f[k];
+      box.onchange = () => { f[k] = box.checked; save(); };
+      tr.insertCell().append(box);
+    }
+    const max = document.createElement('input');
+    max.type = 'number';
+    max.min = '0';
+    max.max = '100';
+    max.placeholder = 'default';
+    max.value = typeof f.volumeMax === 'number' ? String(f.volumeMax) : '';
+    max.onchange = () => { if (max.value === '') delete f.volumeMax; else f.volumeMax = Math.max(0, Math.min(100, Math.round(Number(max.value)))); save(); };
+    tr.insertCell().append(max);
+  }
+}
 function changed(d) {
   clearTimeout(timers.get(d.id));
   setStatus('Saving...');
@@ -233,6 +275,7 @@ for (const g of GROUPS) $('fg').add(new Option(g, g));
 $('download').onclick = () => {
   const devices = {};
   for (const d of rows) if (d.inCatalog) devices[d.id] = entryOf(d);
+  for (const s of speakerRows) if (Object.keys(s.flags || {}).length) devices[s.id] = { category: 'other', speaker: s.flags };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify({ version: 1, devices }, null, 2)], { type: 'application/json' }));
   a.download = 'device-catalog.json';
@@ -297,6 +340,9 @@ export function adminPage(nonce: string): string {
   <span class="muted">Every change saves immediately; the previous state is backed up first.</span>
 </header>
 <table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table>
+<h2>Echo speakers</h2>
+<p class="muted">Everything is off until you turn it on. Once any speaker is set here, only these settings decide (the SPEAK_TARGETS setting is ignored). Urgent: skips approval for the allowed urgent reasons. Volume ceiling: 0-100.</p>
+<table><thead><tr><th>Echo</th><th>Announce / speak</th><th>Urgent bypass</th><th>Allow volume</th><th>Volume ceiling</th></tr></thead><tbody id="speakers"></tbody></table>
 </div>
 <script nonce="${nonce}">${PAGE_SCRIPT}</script>
 `;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import './support/no-network.js';
 import { ApprovalSigner } from '../src/approval.js';
+import { parseCatalog } from '../src/catalog.js';
 import { SpeechService, type SpeakPolicy } from '../src/speech-service.js';
 import { SqliteJournal } from '../src/sqlite-journal.js';
 import type { WriteResponse } from '../src/write-outcome.js';
@@ -137,4 +138,59 @@ test('the urgent limit is separate and never falls back to speaking', async () =
   assert.deepEqual(await s.say('c', ['Kitchen Echo'], 'speak', undefined, 'emergency'), { status: 'rejected', reason: 'rate_limited' });
   assert.equal((await s.say('plain', ['Kitchen Echo'])).status, 'accepted');
   assert.equal(s.adapter.writes.length, 3);
+});
+
+test('set_volume clamps to the ceiling, validates level and target, and journals no names', async () => {
+  const s = start('allow', () => ({ status: 'response_received', body: '' }));
+  const ctx = { principal: 'owner', client: 'chatgpt' };
+  assert.deepEqual(await s.service.setVolume(ctx, { device: 'Kitchen Echo', level: 150 }), { status: 'rejected', reason: 'invalid_level' });
+  assert.deepEqual(await s.service.setVolume(ctx, { device: 'Hall Echo', level: 30 }), { status: 'rejected', reason: 'target_not_allowed' });
+  assert.deepEqual(await s.service.setVolume(ctx, { device: 'Bedroom Echo', level: 30 }), { status: 'rejected', reason: 'device_offline' });
+  assert.equal(s.adapter.writes.length, 0);
+  const reply = await s.service.setVolume(ctx, { device: 'Kitchen Echo', level: 95 });
+  assert.equal(reply.status, 'accepted');
+  assert.equal(reply.level, 70);
+  assert.deepEqual(s.adapter.calls.find((c) => c.method === 'setVolume')?.args, ['SER-KITCHEN-1', 70]);
+  const rows = JSON.stringify((s.journal as unknown as { db: { prepare(q: string): { all(): unknown[] } } }).db.prepare('SELECT * FROM operations').all());
+  assert.doesNotMatch(rows, /Kitchen|SER-KITCHEN/);
+});
+
+test('set_volume needs approval when the policy is approve', async () => {
+  const s = start('approve');
+  const reply = await s.service.setVolume({ principal: 'owner', client: 'chatgpt' }, { device: 'Kitchen Echo', level: 30 }, { canElicit: false });
+  assert.notEqual(reply.status, 'accepted');
+  assert.equal(s.adapter.writes.length, 0);
+});
+
+function flagged(catalogJson: string, policy: SpeakPolicy = 'approve', urgentReasons = ['emergency']) {
+  const adapter = new FakeAlexa({ echo, write: () => ({ status: 'response_received', body: '' }) } as never);
+  const catalog = parseCatalog(catalogJson);
+  const service = new SpeechService(adapter, new SqliteJournal(':memory:'), { policy, targets: ['*'], urgentReasons, catalog: () => catalog }, new ApprovalSigner(Buffer.alloc(32, 7)));
+  return { adapter, service, ctx: { principal: 'owner', client: 'chatgpt' } };
+}
+const entry = (speaker: unknown) => ({ category: 'other', speaker });
+
+test('speaker flags in the catalog replace SPEAK_TARGETS and default to off', async () => {
+  const s = flagged(JSON.stringify({ version: 1, devices: { 'SER-KITCHEN-1': entry({ announce: true }), 'SER-HALL-3': entry({}) } }), 'allow');
+  assert.deepEqual(await s.service.speakers(), [{ name: 'Kitchen Echo', online: true }]);
+  assert.deepEqual(await s.service.say(s.ctx, { text: 'hi', mode: 'speak', devices: ['Hall Echo'] }), { status: 'rejected', reason: 'target_not_allowed' });
+  assert.equal((await s.service.say(s.ctx, { text: 'hi', mode: 'speak', devices: ['Kitchen Echo'] })).status, 'accepted');
+  assert.deepEqual(await s.service.setVolume(s.ctx, { device: 'Kitchen Echo', level: 20 }), { status: 'rejected', reason: 'target_not_allowed' });
+});
+
+test('urgent bypass needs the urgent flag, otherwise approval is asked; volume honours the speaker ceiling', async () => {
+  const s = flagged(JSON.stringify({ version: 1, devices: { 'SER-KITCHEN-1': entry({ announce: true, volume: true, volumeMax: 40 }), 'SER-HALL-3': entry({ announce: true, urgent: true }) } }));
+  const noFlag = await s.service.say(s.ctx, { text: 'help', mode: 'speak', devices: ['Kitchen Echo'], reason: 'emergency' });
+  assert.notEqual(noFlag.status, 'accepted');
+  assert.equal((await s.service.say(s.ctx, { text: 'help', mode: 'speak', devices: ['Hall Echo'], reason: 'emergency' })).status, 'accepted');
+  assert.equal((await s.service.setVolume(s.ctx, { device: 'Kitchen Echo', level: 90 }, { canElicit: false })).status !== 'accepted', true);
+  const allowAll = flagged(JSON.stringify({ version: 1, devices: { 'SER-KITCHEN-1': entry({ volume: true, volumeMax: 40 }) } }), 'allow');
+  const reply = await allowAll.service.setVolume(allowAll.ctx, { device: 'Kitchen Echo', level: 90 });
+  assert.equal(reply.level, 40);
+});
+
+test('the catalog rejects unknown or malformed speaker flags', () => {
+  for (const bad of [{ announce: 'yes' }, { loud: true }, { volumeMax: 101 }, { features: ['Camera!'] }, 'x']) {
+    assert.throws(() => parseCatalog(JSON.stringify({ version: 1, devices: { a: entry(bad) } })));
+  }
 });

@@ -45,6 +45,7 @@ async function main(): Promise<void> {
     runRoutine: (device, routine) => current().runRoutine(device, routine),
     setDnd: (device, enabled) => current().setDnd(device, enabled),
     speak: (serials, mode, text) => current().speak(serials, mode, text),
+    setVolume: (serial, level) => current().setVolume(serial, level),
     lists: () => current().lists(),
     listItems: (listId, limit) => current().listItems(listId, limit),
     reminders: () => current().reminders(),

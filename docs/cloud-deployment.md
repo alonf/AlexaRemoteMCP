@@ -70,7 +70,13 @@ The service refuses to start if a required setting is missing and names only the
   claimed by the agent and cannot be verified, so everything else still applies (allowed devices,
   plain text, offline refusal) and a call over the urgent limit is refused, not downgraded. Each
   one publishes a `speech.urgent` event (reason only) and is journaled as `speech-urgent:<reason>`.
-  - `LISTS_REMINDERS_READ=on` (default off): enables read-only `list_lists`, `get_list_items` and
+  - `SPEAK_VOLUME_MAX` (0-100, default 70): the `set_volume` tool sets one allowed Echo's volume,
+  clamped to this ceiling, with the same approval, allowlist and rate limit as `speak`.
+- Per-Echo settings: on the admin catalog page (`/admin/catalog`), the "Echo speakers" table sets
+  announce, urgent bypass, volume and a volume ceiling per Echo, all off by default. Once any
+  Echo has settings there, they replace `SPEAK_TARGETS` (urgent off means a message asks for
+  approval instead of skipping it). Only the signed-in owner can edit them.
+- `LISTS_REMINDERS_READ=on` (default off): enables read-only `list_lists`, `get_list_items` and
     `list_reminders` (read scope). Only ids, names, text, status and times are returned.
   - `get_status` (read scope) returns session health and your pending approvals. The doorbell also
     publishes `action.completed` (summary and status only) when a mutation finishes.

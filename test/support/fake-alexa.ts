@@ -50,8 +50,9 @@ export class FakeAlexa implements AlexaPort {
   runRoutine(device: string, routine: object) { return this.write('runRoutine', [device, routine]); }
   setDnd(device: string, enabled: boolean) { return this.write('setDnd', [device, enabled]); }
   speak(serials: string[], mode: string, text: string) { return this.write('speak', [serials, mode, text]); }
+  setVolume(serial: string, level: number) { return this.write('setVolume', [serial, level]); }
 
   get writes(): FakeCall[] {
-    return this.calls.filter((c) => ['controlDevice', 'runRoutine', 'setDnd', 'speak'].includes(c.method));
+    return this.calls.filter((c) => ['controlDevice', 'runRoutine', 'setDnd', 'speak', 'setVolume'].includes(c.method));
   }
 }

@@ -15,9 +15,20 @@ export type Operation = (typeof OPERATIONS)[number];
 export type OperationModes = Partial<Record<Operation, Mode>>;
 const OVERRIDE_MODES: readonly string[] = ['allow', 'approve', 'deny'];
 
+export interface SpeakerFlags {
+  // Everything is off until the owner turns it on; features is reserved for later per-Echo capabilities.
+  announce?: boolean;
+  urgent?: boolean;
+  volume?: boolean;
+  volumeMax?: number;
+  features?: string[];
+}
+
 export interface CatalogEntry {
   // Per-operation mode overriding the device's group or category mode.
   operations?: OperationModes;
+  // Present only on Echo speaker entries, keyed by the Echo's serial number.
+  speaker?: SpeakerFlags;
   category: CatalogCategory;
   group?: PermissionGroup;
   groupKind?: GroupKind;
@@ -32,7 +43,28 @@ export const EMPTY_CATALOG: Catalog = new Map();
 
 const MAX_ENTRIES = 2000;
 const MAX_DESCRIPTION = 300;
-const KEYS = new Set(['category', 'group', 'groupKind', 'members', 'description', 'disabled', 'operations']);
+const KEYS = new Set(['category', 'group', 'groupKind', 'members', 'description', 'disabled', 'operations', 'speaker']);
+const SPEAKER_KEYS = new Set(['announce', 'urgent', 'volume', 'volumeMax', 'features']);
+const FEATURE = /^[a-z_]{1,32}$/;
+
+function parseSpeaker(where: string, raw: unknown): SpeakerFlags {
+  if (!isRecord(raw)) throw new CatalogError(`catalog ${where}: speaker must be an object`);
+  const speaker: SpeakerFlags = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!SPEAKER_KEYS.has(key)) throw new CatalogError(`catalog ${where}: unknown speaker field`);
+    if (key === 'volumeMax') {
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100) throw new CatalogError(`catalog ${where}: volumeMax must be 0 to 100`);
+      speaker.volumeMax = value;
+    } else if (key === 'features') {
+      if (!Array.isArray(value) || value.some((f) => typeof f !== 'string' || !FEATURE.test(f))) throw new CatalogError(`catalog ${where}: features must be short names`);
+      if (value.length > 0) speaker.features = [...value] as string[];
+    } else {
+      if (typeof value !== 'boolean') throw new CatalogError(`catalog ${where}: speaker flags must be true or false`);
+      if (value) speaker[key as 'announce' | 'urgent' | 'volume'] = true;
+    }
+  }
+  return speaker;
+}
 const CATALOG_CATEGORIES = CATEGORIES.filter((c): c is CatalogCategory => c !== 'query');
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,11 +78,12 @@ function parseEntry(id: string, raw: unknown): CatalogEntry {
   const where = `device ${id.slice(0, 40)}`;
   if (!isRecord(raw)) throw new CatalogError(`catalog ${where}: entry must be an object`);
   for (const key of Object.keys(raw)) if (!KEYS.has(key)) throw new CatalogError(`catalog ${where}: unknown field ${key.slice(0, 40)}`);
-  const { category, group, groupKind, members, description, disabled, operations } = raw;
+  const { category, group, groupKind, members, description, disabled, operations, speaker } = raw;
   if (typeof category !== 'string' || !(CATALOG_CATEGORIES as readonly string[]).includes(category)) {
     throw new CatalogError(`catalog ${where}: unknown category`);
   }
   const entry: CatalogEntry = { category: category as CatalogCategory };
+  if (speaker !== undefined) entry.speaker = parseSpeaker(where, speaker);
   if (group !== undefined) {
     if (typeof group !== 'string' || !Object.hasOwn(PERMISSION_GROUPS, group)) throw new CatalogError(`catalog ${where}: unknown group`);
     entry.group = group as PermissionGroup;

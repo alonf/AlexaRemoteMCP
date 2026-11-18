@@ -310,6 +310,33 @@ function buildMcpServer(options: HttpServerOptions, approval: ApprovalInput): Mc
         return { ...(failed ? { isError: true } : {}), ...asText(reply) };
       },
     );
+    server.registerTool(
+      'set_volume',
+      {
+        description: 'Set the volume (0-100, capped by the server) of one Echo from list_speakers. The owner may need to approve first. A reply of accepted means Alexa took the request, not that the volume changed.',
+        inputSchema: {
+          device: z.string().min(1).max(128),
+          level: z.number().int().min(0).max(100),
+          approvalId: z.string().max(2048).optional().describe('From a confirmation_required reply. Only repeat the call with it after the user has said yes themselves.'),
+          confirmed: z.boolean().optional().describe('true only if the user explicitly said yes; false if they said no.'),
+        },
+      },
+      async (input: { device: string; level: number; approvalId?: string | undefined; confirmed?: boolean | undefined }, extra) => {
+        if (!hasScope(extra.authInfo, 'mutate')) return denied();
+        const principal = extra.authInfo?.extra?.principal;
+        if (typeof principal !== 'string') return denied();
+        const reply = await speech.setVolume(
+          { principal, client: extra.authInfo?.clientId ?? 'unknown' },
+          { device: input.device, level: input.level },
+          { ...approval, confirmation: { approvalId: input.approvalId, confirmed: input.confirmed } },
+        );
+        if (reply.status === 'approval_required' && reply.approval) {
+          return { resultType: 'input_required', ...reply.approval } as never;
+        }
+        const failed = reply.status === 'rejected' || reply.status === 'not_dispatched' || reply.status === 'failed';
+        return { ...(failed ? { isError: true } : {}), ...asText(reply) };
+      },
+    );
   }
 
   const mutations = options.mutations;

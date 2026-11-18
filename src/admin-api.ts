@@ -4,6 +4,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { CatalogService } from './catalog-service.js';
 import { adminPage } from './admin-page.js';
 import { listDevices } from './inventory.js';
+import { echoesOf } from './speech-service.js';
 import type { AlexaPort } from './ports.js';
 import type { SessionHealth } from './session-manager.js';
 
@@ -66,8 +67,11 @@ export function createAdminHandler(options: AdminOptions): (request: IncomingMes
       const catalog = options.catalog.read();
       const result = await listDevices(options.adapter, options.sessionHealth(), new Date(), catalog, true);
       const seen = new Set(result.status === 'ok' ? result.devices.map((d) => d.id) : []);
-      const catalogOnly = [...catalog].filter(([id]) => !seen.has(id)).map(([id, entry]) => ({ id, catalog: entry }));
-      send(response, 200, result.status === 'ok' ? { ...result, catalogOnly } : { ...result, devices: [], catalogOnly });
+      const catalogOnly = [...catalog].filter(([id, entry]) => !seen.has(id) && !entry.speaker).map(([id, entry]) => ({ id, catalog: entry }));
+      let echoes: Array<{ id: string; name: string; online: boolean }> = [];
+      try { echoes = echoesOf(await options.adapter.echoDevices()).map((e) => ({ id: e.serial, name: e.name, online: e.online })); } catch { /* the speaker section is simply empty */ }
+      const speakers = echoes.map((e) => ({ ...e, flags: catalog.get(e.id)?.speaker ?? {} }));
+      send(response, 200, result.status === 'ok' ? { ...result, catalogOnly, speakers } : { ...result, devices: [], catalogOnly, speakers });
       return true;
     }
 

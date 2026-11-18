@@ -93,4 +93,8 @@ export class AlexaAdapter implements AlexaPort {
       mode === 'speak' ? (serials[0] as string) : serials, mode === 'speak' ? 'speak' : 'announcement', text, callback,
     ));
   }
+
+  setVolume(serial: string, level: number) {
+    return awaitWriteResponse((callback) => this.client.sendSequenceCommand(serial, 'volume', level, callback));
+  }
 }

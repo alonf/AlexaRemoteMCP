@@ -88,6 +88,8 @@ Raised by the owner after Milestone B; each needs its own OpenSpec change and ow
 | `alexa-text-command` | Text to Alexa+ with the reply read back if possible; always approved and journaled; reply retrieval unverified. |
 | `more-device-kinds` | Thermostat setpoint/mode, locks, garage doors, colour, scenes, volume; each with its own category and approval mode. |
 | `catalog-group-overrides-and-admin-journal` | Group-inherited overrides and journaling of admin edits. |
+| `speaker-catalog-controls` | Per-Echo settings in the catalog page: allow announcements, force approval even on urgent bypass, allow volume, and other per-device features (camera snapshot or short video on Echo Show, two-way voice or video chat with a connected agent). Replaces the global `SPEAK_TARGETS`. Needs upstream feasibility checks. |
+| `set-volume` | Standalone approved `set_volume` tool, then an optional urgent-only `volume` on `speak` with a ceiling and restore. |
 
 ## Sequencing notes
 

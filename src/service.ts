@@ -20,7 +20,7 @@ import { httpsCallbackTransport } from './events/callback-transport.js';
 import { Delivery } from './events/delivery.js';
 import { healthWatcher } from './events/health-watch.js';
 import { SubscriptionStore } from './events/subscriptions.js';
-import { SpeechService, type SpeakPolicy } from './speech-service.js';
+import { DEFAULT_VOLUME_MAX, SpeechService, type SpeakPolicy } from './speech-service.js';
 import { SqliteJournal } from './sqlite-journal.js';
 
 export interface ServiceConfig {
@@ -44,6 +44,7 @@ export interface ServiceConfig {
   speakTargets: string[];
   speakUrgentReasons: string[];
   speakUrgentLimit: number;
+  speakVolumeMax: number;
   personalReads: boolean;
 }
 
@@ -83,9 +84,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServiceConfig {
   if (urgentReasons.some((reason) => !/^[a-z_]{1,32}$/.test(reason))) throw new ConfigError('SPEAK_URGENT_REASONS is invalid');
   const urgentLimit = env.SPEAK_URGENT_LIMIT?.trim() ? Number(env.SPEAK_URGENT_LIMIT) : 2;
   if (!Number.isInteger(urgentLimit) || urgentLimit < 1 || urgentLimit > 20) throw new ConfigError('SPEAK_URGENT_LIMIT must be 1 to 20');
+  const volumeMax = env.SPEAK_VOLUME_MAX?.trim() ? Number(env.SPEAK_VOLUME_MAX) : DEFAULT_VOLUME_MAX;
+  if (!Number.isInteger(volumeMax) || volumeMax < 0 || volumeMax > 100) throw new ConfigError('SPEAK_VOLUME_MAX must be 0 to 100');
   return {
     speakUrgentReasons: urgentReasons,
     speakUrgentLimit: urgentLimit,
+    speakVolumeMax: volumeMax,
     personalReads: env.LISTS_REMINDERS_READ?.trim().toLowerCase() === 'on',
     speakPolicy,
     speakTargets: list(env.SPEAK_TARGETS),
@@ -192,11 +196,11 @@ export async function buildService(config: ServiceConfig, deps: ServiceDeps): Pr
   // Catalog edits always need the signer, whatever the category modes are.
   const needsApproval = catalogEnabled || (modes !== undefined && CATEGORIES.some((category) => modes[category] === 'approve'));
   const eventsEnabled = config.eventCallbackHosts.length > 0;
-  const speechOn = config.speakPolicy !== 'off' && config.speakTargets.length > 0;
+  const speechOn = config.speakPolicy !== 'off';
   const approvalSecret = needsApproval || eventsEnabled || config.speakPolicy === 'approve' ? await loadApprovalKey(deps.vault) : undefined;
   const approvals = (needsApproval || config.speakPolicy === 'approve') && approvalSecret ? new ApprovalSigner(approvalSecret) : undefined;
   const speech = speechOn
-    ? new SpeechService(deps.alexa.port, journal, { policy: config.speakPolicy, targets: config.speakTargets, urgentReasons: config.speakUrgentReasons, urgentLimit: config.speakUrgentLimit }, approvals)
+    ? new SpeechService(deps.alexa.port, journal, { policy: config.speakPolicy, targets: config.speakTargets, urgentReasons: config.speakUrgentReasons, urgentLimit: config.speakUrgentLimit, volumeMax: config.speakVolumeMax, catalog: () => catalog.get() }, approvals)
     : undefined;
   // With ACTION_POLICY set and no device list, the modes alone decide; a list only narrows them.
   const allowedTargets = new Set(config.mutationTargets.length > 0 ? config.mutationTargets : ['*']);
