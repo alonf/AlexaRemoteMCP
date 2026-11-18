@@ -40,7 +40,7 @@ test('owner flow to verified mutation: issuer, MCP, policy, journal and fake ada
     const result = await t.call('light_turn_on', { id: LIGHT, operationKey: 'e2e-operation-1' });
     assert.equal(result.body.status, 'verified');
     const record = (await t.s.journal.read())[0];
-    assert.equal(record?.operation, 'light-power');
+    assert.equal(record?.operation, 'device-power');
     assert.equal(record?.outcome?.status, 'verified');
     assert.equal(t.adapter.writes.length, 1);
   } finally { await t.stop(); }

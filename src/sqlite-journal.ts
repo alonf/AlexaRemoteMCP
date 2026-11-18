@@ -68,6 +68,47 @@ export class SqliteJournal implements OperationStore {
     )`);
     this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS operations_key
       ON operations(principal, operation_key) WHERE operation_key IS NOT NULL`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS approvals (
+      nonce TEXT PRIMARY KEY,
+      principal TEXT NOT NULL,
+      client TEXT,
+      operation TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      decided_at TEXT,
+      operation_id TEXT
+    )`);
+  }
+
+  // The signed request state is never stored; only its nonce, so a state can be consumed once.
+  requestApproval(nonce: string, context: OperationContext, operation: string, targetId: string, now: Date): void {
+    this.db
+      .prepare('INSERT INTO approvals(nonce, principal, client, operation, target_id, decision, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(nonce, context.principal, context.client, operation, targetId, 'requested', now.toISOString());
+  }
+
+  // True only for the first decision on a requested nonce, which makes approval single use.
+  decideApproval(nonce: string, decision: 'granted' | 'declined' | 'expired' | 'invalid', now: Date): boolean {
+    const result = this.db
+      .prepare("UPDATE approvals SET decision = ?, decided_at = ? WHERE nonce = ? AND decision = 'requested'")
+      .run(decision, now.toISOString(), nonce);
+    return Number(result.changes) === 1;
+  }
+
+  noteApproval(context: OperationContext, operation: string, targetId: string, decision: 'invalid', now: Date): void {
+    this.db
+      .prepare('INSERT INTO approvals(nonce, principal, client, operation, target_id, decision, requested_at, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(randomUUID(), context.principal, context.client, operation, targetId, decision, now.toISOString(), now.toISOString());
+  }
+
+  linkApproval(nonce: string, operationId: string): void {
+    this.db.prepare('UPDATE approvals SET operation_id = ? WHERE nonce = ?').run(operationId, nonce);
+  }
+
+  approvalDecision(nonce: string): string | undefined {
+    const row = this.db.prepare('SELECT decision FROM approvals WHERE nonce = ?').get(nonce) as { decision: string } | undefined;
+    return row?.decision;
   }
 
   async begin(operation: string, args: unknown, targets: string[], now: Date = new Date()): Promise<JournalBegin> {

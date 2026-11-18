@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { exportJWK, generateKeyPair } from 'jose';
+import { createAdminHandler } from '../../src/admin-api.js';
+import type { CatalogService } from '../../src/catalog-service.js';
 import { createHttpServer } from '../../src/http-server.js';
 import { createIssuer, type Issuer, type SignInProvider } from '../../src/issuer.js';
 import { MutationService } from '../../src/mutation-service.js';
@@ -22,6 +24,7 @@ export async function startAuthServer(opts: {
   resource?: string;
   adapter?: FakeAlexa;
   allowedTargets?: string[];
+  adminCatalog?: CatalogService;
 } = {}) {
   const store = new OidcStore(':memory:');
   const adapter = opts.adapter ?? new FakeAlexa();
@@ -34,13 +37,25 @@ export async function startAuthServer(opts: {
   let who = OWNER;
   const holder: { issuer?: Issuer } = {};
   let base = '';
+  const admin = opts.adminCatalog
+    ? createAdminHandler({
+      baseUrl: 'http://placeholder.invalid',
+      authenticate: (request) => holder.issuer?.authenticateAdmin(request) ?? Promise.resolve(undefined),
+      catalog: opts.adminCatalog,
+      adapter,
+      sessionHealth: () => 'usable',
+    })
+    : undefined;
   const server = createHttpServer({
     adapter,
     sessionHealth: () => 'usable',
     authenticate: (request) => holder.issuer?.authenticate(request) ?? Promise.resolve(undefined),
     allowedOrigins: [],
     resourceMetadataUrl: 'placeholder',
-    fallback: (request, response) => holder.issuer?.handle(request, response),
+    fallback: async (request, response) => {
+      if (admin && await admin(request, response)) return;
+      await holder.issuer?.handle(request, response);
+    },
     ...(mutations ? { mutations } : {}),
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -50,6 +65,7 @@ export async function startAuthServer(opts: {
     baseUrl: base,
     resource,
     approvedRedirectUris: [APPROVED_REDIRECT],
+    ...(opts.adminCatalog ? { adminRedirectUri: APPROVED_REDIRECT } : {}),
     ownerAccountId: OWNER,
     store,
     signingKey: signingKey as never,

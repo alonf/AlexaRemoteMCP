@@ -23,7 +23,23 @@ param approvedRedirectUris string
 var suffix = uniqueString(resourceGroup().id, namePrefix)
 var vaultName = take('${namePrefix}-kv-${suffix}', 24)
 var siteName = '${namePrefix}-mcp-${suffix}'
+var storageName = take('${namePrefix}st${suffix}', 24)
 var secretsOfficer = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7' // built-in role ID "Key Vault Secrets Officer", not a secret // gitleaks:allow
+var blobContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // built-in role ID "Storage Blob Data Contributor", not a secret // gitleaks:allow
+
+// Private storage for catalog backups; the app reaches it with its managed identity, never a key.
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: storageName
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: {
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+  }
+}
 
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: vaultName
@@ -70,6 +86,7 @@ resource site 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'ENTRA_TENANT_ID', value: entraTenantId }
         { name: 'ENTRA_CLIENT_ID', value: entraClientId }
         { name: 'APPROVED_REDIRECT_URIS', value: approvedRedirectUris }
+        { name: 'CATALOG_BACKUP_URL', value: storage.properties.primaryEndpoints.blob }
         // The owner ID and mutation allow-list are private and set after deployment, never in this file.
         { name: 'ENTRA_CLIENT_SECRET', value: '@Microsoft.KeyVault(SecretUri=${vault.properties.vaultUri}secrets/entra-client-secret/)' }
       ]
@@ -84,6 +101,16 @@ resource siteIdentityRole 'Microsoft.Authorization/roleAssignments@2022-04-01' =
     principalId: site.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', secretsOfficer)
+  }
+}
+
+resource siteStorageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, site.id, blobContributor)
+  scope: storage
+  properties: {
+    principalId: site.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', blobContributor)
   }
 }
 

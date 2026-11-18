@@ -5,6 +5,8 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OidcStore } from './oidc-store.js';
 
 export const SCOPES = ['read', 'mutate'] as const;
+// Only the owner's catalog page may hold this scope; it is never advertised to MCP clients.
+export const ADMIN_SCOPE = 'admin';
 const REGISTRATION_BODY_LIMIT = 16 * 1024;
 const TICKET_TTL_MS = 5 * 60 * 1000;
 
@@ -20,6 +22,8 @@ export interface IssuerOptions {
   baseUrl: string;
   resource: string;
   approvedRedirectUris: readonly string[];
+  // Redirect URI of the server's own admin page; the only client allowed the admin scope.
+  adminRedirectUri?: string;
   ownerAccountId: string;
   store: OidcStore;
   signingKey: JWK;
@@ -33,6 +37,8 @@ export interface Issuer {
   // Serves every issuer, metadata and sign-in route.
   handle: (request: IncomingMessage, response: ServerResponse) => Promise<void>;
   authenticate: (request: IncomingMessage) => Promise<AuthInfo | undefined>;
+  // Like authenticate, but only for the admin page's own client holding the admin scope.
+  authenticateAdmin: (request: IncomingMessage) => Promise<AuthInfo | undefined>;
   protectedResourceMetadata: () => Record<string, unknown>;
 }
 
@@ -67,13 +73,13 @@ const sameSecret = (a: string, b: string) => {
 export function createIssuer(options: IssuerOptions): Issuer {
   const { resource, ownerAccountId, signIn } = options;
   const issuerOrigin = new URL(options.baseUrl).origin;
-  const approved = new Set(options.approvedRedirectUris);
+  const approved = new Set([...options.approvedRedirectUris, ...(options.adminRedirectUri ? [options.adminRedirectUri] : [])]);
 
   const configuration: Configuration = {
     adapter: options.store.adapter,
     jwks: { keys: [options.signingKey] },
     cookies: { keys: options.cookieKeys },
-    scopes: ['openid', 'offline_access', ...SCOPES],
+    scopes: ['openid', 'offline_access', ...SCOPES, ADMIN_SCOPE],
     claims: { openid: ['sub'] },
     pkce: { required: () => true },
     clientDefaults: {
@@ -92,7 +98,7 @@ export function createIssuer(options: IssuerOptions): Issuer {
         useGrantedResource: () => true,
         getResourceServerInfo: async (_ctx, indicator) => {
           if (indicator !== resource) throw new errors.InvalidTarget();
-          return { scope: SCOPES.join(' '), audience: resource, accessTokenFormat: 'opaque', accessTokenTTL: 3600 };
+          return { scope: [...SCOPES, ADMIN_SCOPE].join(' '), audience: resource, accessTokenFormat: 'opaque', accessTokenTTL: 3600 };
         },
       },
     },
@@ -146,7 +152,7 @@ export function createIssuer(options: IssuerOptions): Issuer {
 
   function consentPage(uid: string, clientName: string, scopes: string[]): string {
     const boxes = scopes
-      .map((s) => `<label><input type="checkbox" name="scope" value="${escapeHtml(s)}" ${s === 'read' ? 'checked' : ''}> ${escapeHtml(s)}</label><br>`)
+      .map((s) => `<label><input type="checkbox" name="scope" value="${escapeHtml(s)}" ${s === 'read' || s === ADMIN_SCOPE ? 'checked' : ''}> ${escapeHtml(s)}</label><br>`)
       .join('');
     return `<!doctype html><meta charset="utf-8"><title>Approve client</title>
 <h1>Approve ${escapeHtml(clientName)}?</h1>
@@ -229,7 +235,10 @@ export function createIssuer(options: IssuerOptions): Issuer {
       }
       if (details.prompt.name === 'consent') {
         const client = await provider.Client.find(String(details.params.client_id));
-        const requested = String(details.params.scope ?? '').split(' ').filter((s) => (SCOPES as readonly string[]).includes(s));
+        const isAdminClient = options.adminRedirectUri !== undefined && client?.redirectUris?.length === 1
+          && client.redirectUris[0] === options.adminRedirectUri;
+        const allowed: readonly string[] = isAdminClient ? [ADMIN_SCOPE] : SCOPES;
+        const requested = String(details.params.scope ?? '').split(' ').filter((s) => allowed.includes(s));
         sendText(response, 200, consentPage(uid, client?.clientName ?? 'an MCP client', requested));
         return true;
       }
@@ -286,5 +295,13 @@ export function createIssuer(options: IssuerOptions): Issuer {
     };
   }
 
-  return { provider, handle, authenticate, protectedResourceMetadata };
+  async function authenticateAdmin(request: IncomingMessage): Promise<AuthInfo | undefined> {
+    const auth = await authenticate(request);
+    if (!auth || !auth.scopes.includes(ADMIN_SCOPE) || options.adminRedirectUri === undefined) return undefined;
+    const client = await provider.Client.find(auth.clientId);
+    const ok = client?.redirectUris?.length === 1 && client.redirectUris[0] === options.adminRedirectUri;
+    return ok ? auth : undefined;
+  }
+
+  return { provider, handle, authenticate, authenticateAdmin, protectedResourceMetadata };
 }

@@ -22,7 +22,29 @@ Set after deployment and never committed (they are household-specific):
 
 - `OWNER_ACCOUNT_ID`: the owner's Entra object ID. Only this account can authorize a client.
 - `MUTATION_ALLOWED_TARGETS`: comma-separated device IDs the mutation tools may touch. Empty
-  means the mutation tools are not registered at all.
+  means the mutation tools are not registered at all (unless `ACTION_POLICY` enables them, in
+  which case `*` or an empty list means every device the policy permits). The list only narrows
+  what `ACTION_POLICY` allows.
+- `ACTION_POLICY`: one setting that picks `allow`, `approve` or `deny` per category. Either a
+  preset or `category=mode` pairs, for example `light=allow,cover=approve,heater=approve`.
+  - Categories: `query`, `light`, `cover` (shutters, blinds), `heater` (heaters, fans), `ac`
+    (air conditioners and thermostats; they heat and cool), `outlet` (plugs), `access` (locks,
+    doors, garage), `other`. Unlisted categories are `deny`.
+  - Presets: `read-only`, `lights-only` (the default when unset), `lights-allow-rest-approve`.
+  - `approve` asks the owner through an MCP Multi Round-Trip Request (protocol 2026-07-28) on
+    every call. Clients that do not support it are refused (`approval_unsupported`), never
+    allowed. The signing key is the Key Vault secret `approval-key`, created by the app.
+  - Chat confirmation: a client that cannot elicit (ChatGPT today) does not get refused. The
+    server replies `confirmation_required` with a question and an `approvalId`, and sends
+    nothing. The assistant asks the user and, only on a yes (typed or spoken), repeats the call
+    with `approvalId` and `confirmed=true`. The id is signed, single-use, bound to the device
+    and action, and expires in 2 minutes; a confirmation under 3 seconds after the ask is
+    refused. The server cannot verify that a human answered, so set `CHAT_CONFIRMATION=off` to
+    restore the refusal. Catalog edits never use it.
+  - `query=approve` is invalid. Security panels, alarms, smoke/CO detectors, cameras and valves
+    are never actionable. An invalid value stops startup.
+  - Warning: setting `access` to `allow` lets an agent unlock doors without asking; prefer
+    `approve`.
 
 The service refuses to start if a required setting is missing and names only the setting.
 
@@ -62,6 +84,30 @@ The service refuses to start if a required setting is missing and names only the
    Check `GET /healthz` returns 200 and `GET /readyz` returns 200 once the session is seeded (503
    before that is expected).
    Set `ALEXA_DIAG=1` temporarily to log a redacted backend failure message.
+
+## Device catalog page and backups
+
+`https://<site>/admin/catalog` is the owner's catalog page. The page itself is a static shell; its
+API (`/admin/api/*`) accepts only a token with the `admin` scope, which is granted only to the
+page's own OAuth client (redirect URI `<PUBLIC_BASE_URL>/admin/catalog`) after owner sign-in, and is
+never advertised to MCP clients. Changes save immediately to `CATALOG_PATH`
+(default `/home/data/device-catalog.json`). The page can also import a whole catalog file.
+
+Each entry has a category, an optional group, and an optional `operations` map that overrides
+the mode per operation (`power_on`, `power_off`, `brightness`, `open`, `close`, `stop`, `step`, each `allow`,
+`approve` or `deny`), so turning a light off can be allowed while turning it on needs approval.
+For shutters, `stop` sends a step in the direction of travel (the caller states it) rather than
+the skill's `Position.Stop`, which steps down and would reverse a rising shutter; `step` is a
+short step up or down.
+Overrides never loosen blocked, disabled, unsupported or read-only devices.
+
+Before an edit changes the file, the previous state is uploaded to the private blob container
+`CATALOG_BACKUP_CONTAINER` (default `catalog-backups`) in the account at `CATALOG_BACKUP_URL`,
+using the app's managed identity (role "Storage Blob Data Contributor"; shared keys are disabled).
+A burst of edits shares one snapshot taken within the previous 5 minutes. If the upload fails the
+edit is refused. Without `CATALOG_BACKUP_URL` only the local `.bak` copy exists. The catalog and the
+category policy are read at startup, so restart after the first import to enable catalog-based
+policy and the MCP catalog tools.
 
 ## Seed or re-seed the Alexa session (reauthentication)
 

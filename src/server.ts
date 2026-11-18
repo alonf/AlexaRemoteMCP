@@ -3,10 +3,13 @@ import { AlexaAdapter, type AlexaProbeClient } from './alexa-adapter.js';
 import { AlexaSessionBackend, type CookieHelper, type RemoteSessionClient } from './alexa-session-backend.js';
 import { createAzureVault, KeyVaultSessionStore } from './keyvault-session-store.js';
 import type { AlexaPort } from './ports.js';
+import { cachedInventory } from './inventory-cache.js';
 import { buildService, loadConfig } from './service.js';
 import { SessionManager } from './session-manager.js';
 
 const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const INVENTORY_MAX_AGE_MS = 10 * 60 * 1000;
+const INVENTORY_REFRESH_MS = 4 * 60 * 1000;
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- untyped CommonJS helper
 const cookie = require('alexa-cookie2') as CookieHelper;
@@ -29,9 +32,10 @@ async function main(): Promise<void> {
     if (!client) throw new Error('Session unavailable');
     return new AlexaAdapter(client as unknown as AlexaProbeClient);
   };
+  const inventory = cachedInventory(() => current().smartHomeDevices(), INVENTORY_MAX_AGE_MS);
   const port: AlexaPort = {
     echoDevices: () => current().echoDevices(),
-    smartHomeDevices: () => current().smartHomeDevices(),
+    smartHomeDevices: () => inventory.read(),
     smartHomeGroups: () => current().smartHomeGroups(),
     routines: (limit) => current().routines(limit),
     deviceState: (id, entityType) => current().deviceState(id, entityType),
@@ -51,6 +55,9 @@ async function main(): Promise<void> {
 
   await manager.initialize().catch(() => undefined);
   console.log(`Alexa session: ${manager.health}`);
+  void inventory.refresh();
+  const warm = setInterval(() => { void inventory.refresh(); }, INVENTORY_REFRESH_MS);
+  warm.unref();
   const timer = setInterval(() => {
     void manager.refresh().catch(() => undefined).finally(() => console.log(`Alexa session: ${manager.health}`));
   }, REFRESH_INTERVAL_MS);

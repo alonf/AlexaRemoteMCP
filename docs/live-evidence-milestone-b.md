@@ -67,6 +67,26 @@ dummy session; the group was deleted afterwards.
 - Key Vault purge protection means the deleted vault stays soft-deleted for the retention period; its name is unique
   to that resource group, so nothing collides.
 
+## Client compatibility (task 7.4)
+
+### ChatGPT (2026-11-17)
+
+- Registered through dynamic client registration (`/reg`), as client name `ChatGPT`, redirect URI
+  `https://chatgpt.com/connector_platform_oauth_redirect`, public client (`token_endpoint_auth_method: none`),
+  grants `authorization_code` and `refresh_token`. No client-ID metadata document (CIMD) was used; the issuer does not
+  offer one.
+- Sign-in through Entra and the consent step completed. The access token was audience-bound to the `/mcp` resource,
+  scope `read mutate`, lifetime 3600 s; the refresh token lasted 30 days.
+- The tools were listed and device inventory was read.
+- A light command for a device that is not on the allow-list was refused by the policy (`target_not_allowed`) and
+  nothing was sent to Amazon. This confirms the allow-list protects against a client holding the `mutate` scope.
+- No client-side error was reported. The service does not log individual requests, so these notes come from the
+  client store and the owner's report.
+
+### Claude
+
+Not yet recorded.
+
 ## Not shown
 
 - Session refresh from the cloud address. The 6-hour refresh timer restarts on every deploy and has not yet run

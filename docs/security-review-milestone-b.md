@@ -18,6 +18,7 @@ the test that fails if the behavior regresses. All tests run offline with fakes.
 | Log and error leakage | Vault, session and upstream errors carry generic messages; the service logs no request content; the logger redacts untrusted detail; a start failure names only missing setting names | `keyvault-session-store.test.ts` "vault failures do not expose upstream messages"; `logger.test.ts`; `service.test.ts` "missing required settings" |
 | Anonymous health | `/healthz` and `/readyz` return only a coarse status | `http-server.test.ts` "anonymous health endpoints are coarse" |
 | Duplicate or uncertain effects | Keyed replay returns the original result; a crash window records `unknown` and never replays; newest command wins per target | `sqlite-recovery.test.ts`; `mutation-tools.test.ts`; `target-ordering.test.ts` |
+| Owner approval (`ACTION_POLICY` `approve`) | Server-built prompt; HMAC-signed state bound to user, device, action and a 2 min expiry; single use; a model-supplied `confirmed` is ignored; clients without MRTR elicitation are refused; classes like security panels and cameras are never actionable | `approval.test.ts`; `action-policy.test.ts` |
 
 ## Known gaps (not silently passed)
 

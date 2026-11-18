@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { evaluateMutationPolicy } from '../src/mutation-policy.js';
+import { evaluateMutationPolicy, type PolicyDecision } from '../src/mutation-policy.js';
 import { FakeAlexa } from './support/fake-alexa.js';
+
+// Compares the decision without the approval-related details, which have their own tests.
+const slim = (decision: PolicyDecision) => (decision.allowed ? { allowed: true, controlId: decision.controlId } : decision);
 
 const device = (id: string, types: string[], caps: string[] = ['Alexa.PowerController', 'Alexa.BrightnessController']) => ({
   applianceId: id,
@@ -18,8 +21,8 @@ const setup = (...devices: unknown[]) => {
 
 test('an allow-listed light with the capability is allowed for power and brightness', async () => {
   const { adapter, policy } = setup(device('light-1', ['LIGHT']));
-  assert.deepEqual(await evaluateMutationPolicy(adapter, policy, 'light-1', 'power'), { allowed: true, controlId: 'light-1' });
-  assert.deepEqual(await evaluateMutationPolicy(adapter, policy, 'light-1', 'brightness'), { allowed: true, controlId: 'light-1' });
+  assert.deepEqual(slim(await evaluateMutationPolicy(adapter, policy, 'light-1', 'power')), { allowed: true, controlId: 'light-1' });
+  assert.deepEqual(slim(await evaluateMutationPolicy(adapter, policy, 'light-1', 'brightness')), { allowed: true, controlId: 'light-1' });
 });
 
 test('a target that is not on the allow-list is refused without reading the inventory', async () => {
@@ -63,6 +66,6 @@ test('endpoint-shaped records keep class and capabilities under legacyAppliance 
     legacyAppliance: { applianceId: 'SKILL_light-1', applianceTypes: ['LIGHT'], capabilities: [{ interfaceName: 'Alexa.PowerController' }] },
   };
   const { adapter, policy } = setup(record);
-  assert.deepEqual(await evaluateMutationPolicy(adapter, policy, 'light-1', 'power'), { allowed: true, controlId: 'SKILL_light-1' });
+  assert.deepEqual(slim(await evaluateMutationPolicy(adapter, policy, 'light-1', 'power')), { allowed: true, controlId: 'SKILL_light-1' });
   assert.deepEqual(await evaluateMutationPolicy(adapter, policy, 'light-1', 'brightness'), { allowed: false, reason: 'unsupported_capability' });
 });
