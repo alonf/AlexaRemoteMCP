@@ -71,7 +71,7 @@ index f90b5e6..9f913da 100644
 +            if (flags.proofSafeWrite) {
 +                if (err || !res || typeof res.statusCode !== 'number' || res.statusCode < 200 || res.statusCode >= 300 || (!body && !flags.proofEmptyBodyOk) ||
 +                    (body && (body.includes('ThrottlingException') || body.includes('Rate exceeded') || body.includes('Too many requests')))) {
-+                    return callback(new Error('Uncertain write response'), null);
++                    return callback(new Error('Uncertain write response status=' + (res && res.statusCode) + ' err=' + (err && err.code) + ' retry-after=' + (res && res.headers && res.headers['retry-after']) + ' reqid=' + (res && res.headers && res.headers['x-amzn-requestid']) + ' body=' + String(body || '').replace(/\s+/g, ' ').slice(0, 160)), null);
 +                }
 +            }
              if (!err && typeof res.statusCode === 'number' && res.statusCode === 401) {

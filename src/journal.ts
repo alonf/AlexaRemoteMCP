@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import type { Outcome } from './outcomes.js';
+import type { OperationStore } from './ports.js';
 
 export interface JournalBegin {
   operationId: string;
@@ -16,13 +17,16 @@ type Entry =
 
 export interface JournalRecord extends JournalBegin {
   outcome?: Outcome;
+  principal?: string;
+  client?: string;
+  operationKey?: string;
 }
 
 export function hashArguments(args: unknown): string {
   return createHash('sha256').update(JSON.stringify(args) ?? 'undefined').digest('hex');
 }
 
-export class Journal {
+export class Journal implements OperationStore {
   constructor(private readonly path: string) {}
 
   private async append(entry: Entry): Promise<void> {
@@ -86,7 +90,7 @@ export class Journal {
 
 // The journal write precedes dispatch, so a failed write means nothing was sent.
 export async function journaledDispatch(
-  journal: Journal,
+  journal: OperationStore,
   operation: string,
   args: unknown,
   targets: string[],
