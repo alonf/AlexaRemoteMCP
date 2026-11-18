@@ -24,7 +24,7 @@ function start(entry: Record<string, unknown>) {
   );
   const run = (direction: 'open' | 'close' | 'stop_up' | 'stop_down' | 'step_up' | 'step_down') =>
     service.execute({ principal: 'owner', client: 'test' }, 'blind-1', { kind: 'position', direction }, { canElicit: false });
-  return { adapter, run };
+  return { adapter, run, service };
 }
 
 test('a stop steps in the direction of travel and never sends Position.Stop', async () => {
@@ -44,4 +44,18 @@ test('stop and step have their own per-operation modes', async () => {
   assert.deepEqual(await s.run('step_up'), { status: 'rejected', reason: 'category_denied' });
   assert.equal((await s.run('open')).status, 'confirmation_required');
   assert.equal(s.adapter.writes.length, 1);
+});
+
+test('a finished action reports its summary and status to the completion hook, never a refused one', async () => {
+  const s = start({ group: 'low-risk' });
+  const done: Array<[string, string]> = [];
+  s.service.onCompleted = (summary, status) => done.push([summary, status]);
+  await s.run('open');
+  assert.equal(done.length, 1);
+  assert.match(done[0]?.[0] ?? '', /^open "Terrace blind"$/);
+  const refused = start({ group: 'requires-approval', operations: { open: 'deny' } });
+  const none: string[] = [];
+  refused.service.onCompleted = (summary) => none.push(summary);
+  await refused.run('open');
+  assert.equal(none.length, 0);
 });

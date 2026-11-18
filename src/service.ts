@@ -6,7 +6,7 @@ import { ADMIN_PAGE_PATH, createAdminHandler } from './admin-api.js';
 import { type BackupFn, createBlobBackup, throttleBackup } from './catalog-backup.js';
 import { CatalogService } from './catalog-service.js';
 import { type ActionModes, ActionPolicyError, CATEGORIES, parseActionPolicy } from './action-policy.js';
-import { ApprovalSigner } from './approval.js';
+import { ApprovalSigner, APPROVAL_TTL_MS } from './approval.js';
 import { createHttpServer, MCP_PATH } from './http-server.js';
 import { createIssuer } from './issuer.js';
 import type { VaultClient } from './keyvault-session-store.js';
@@ -16,6 +16,11 @@ import { OidcSignIn } from './oidc-sign-in.js';
 import { OidcStore } from './oidc-store.js';
 import type { AlexaPort } from './ports.js';
 import type { SessionHealth } from './session-manager.js';
+import { httpsCallbackTransport } from './events/callback-transport.js';
+import { Delivery } from './events/delivery.js';
+import { healthWatcher } from './events/health-watch.js';
+import { SubscriptionStore } from './events/subscriptions.js';
+import { SpeechService, type SpeakPolicy } from './speech-service.js';
 import { SqliteJournal } from './sqlite-journal.js';
 
 export interface ServiceConfig {
@@ -33,6 +38,13 @@ export interface ServiceConfig {
   ownerAccountId: string;
   mutationTargets: string[];
   actionModes?: ActionModes;
+  eventsPath: string;
+  eventCallbackHosts: string[];
+  speakPolicy: SpeakPolicy;
+  speakTargets: string[];
+  speakUrgentReasons: string[];
+  speakUrgentLimit: number;
+  personalReads: boolean;
 }
 
 export class ConfigError extends Error {}
@@ -65,7 +77,18 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServiceConfig {
       throw new ConfigError(error instanceof ActionPolicyError ? error.message : 'ACTION_POLICY is invalid');
     }
   }
+  const speakPolicy = (env.SPEAK_POLICY?.trim().toLowerCase() || 'off');
+  if (speakPolicy !== 'off' && speakPolicy !== 'approve' && speakPolicy !== 'allow') throw new ConfigError('SPEAK_POLICY must be off, approve or allow');
+  const urgentReasons = list(env.SPEAK_URGENT_REASONS).map((reason) => reason.toLowerCase());
+  if (urgentReasons.some((reason) => !/^[a-z_]{1,32}$/.test(reason))) throw new ConfigError('SPEAK_URGENT_REASONS is invalid');
+  const urgentLimit = env.SPEAK_URGENT_LIMIT?.trim() ? Number(env.SPEAK_URGENT_LIMIT) : 2;
+  if (!Number.isInteger(urgentLimit) || urgentLimit < 1 || urgentLimit > 20) throw new ConfigError('SPEAK_URGENT_LIMIT must be 1 to 20');
   return {
+    speakUrgentReasons: urgentReasons,
+    speakUrgentLimit: urgentLimit,
+    personalReads: env.LISTS_REMINDERS_READ?.trim().toLowerCase() === 'on',
+    speakPolicy,
+    speakTargets: list(env.SPEAK_TARGETS),
     port: Number(env.PORT ?? 8080),
     publicBaseUrl: base,
     journalPath: env.JOURNAL_PATH ?? `${home}/journal.sqlite`,
@@ -80,6 +103,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServiceConfig {
     ownerAccountId: (env.OWNER_ACCOUNT_ID as string).trim(),
     mutationTargets: list(env.MUTATION_ALLOWED_TARGETS),
     ...(actionModes ? { actionModes } : {}),
+    eventsPath: env.EVENTS_STORE_PATH ?? `${home}/events.sqlite`,
+    eventCallbackHosts: env.EVENT_CALLBACK_HOSTS === undefined ? ['connectors.api.openai.com'] : list(env.EVENT_CALLBACK_HOSTS).map((host) => host.toLowerCase()),
   };
 }
 
@@ -166,7 +191,13 @@ export async function buildService(config: ServiceConfig, deps: ServiceDeps): Pr
     || (modes ? CATEGORIES.some((category) => category !== 'query' && modes[category] !== 'deny') : config.mutationTargets.length > 0);
   // Catalog edits always need the signer, whatever the category modes are.
   const needsApproval = catalogEnabled || (modes !== undefined && CATEGORIES.some((category) => modes[category] === 'approve'));
-  const approvals = needsApproval ? new ApprovalSigner(await loadApprovalKey(deps.vault)) : undefined;
+  const eventsEnabled = config.eventCallbackHosts.length > 0;
+  const speechOn = config.speakPolicy !== 'off' && config.speakTargets.length > 0;
+  const approvalSecret = needsApproval || eventsEnabled || config.speakPolicy === 'approve' ? await loadApprovalKey(deps.vault) : undefined;
+  const approvals = (needsApproval || config.speakPolicy === 'approve') && approvalSecret ? new ApprovalSigner(approvalSecret) : undefined;
+  const speech = speechOn
+    ? new SpeechService(deps.alexa.port, journal, { policy: config.speakPolicy, targets: config.speakTargets, urgentReasons: config.speakUrgentReasons, urgentLimit: config.speakUrgentLimit }, approvals)
+    : undefined;
   // With ACTION_POLICY set and no device list, the modes alone decide; a list only narrows them.
   const allowedTargets = new Set(config.mutationTargets.length > 0 ? config.mutationTargets : ['*']);
   const mutations = mutates
@@ -181,6 +212,34 @@ export async function buildService(config: ServiceConfig, deps: ServiceDeps): Pr
       ? throttleBackup(createBlobBackup(config.catalogBackupUrl, config.catalogBackupContainer), 5 * 60 * 1000)
       : undefined);
   const catalogService = new CatalogService(catalog, journal, approvals, undefined, backup);
+
+  // Doorbell events: signed, content-free webhooks to the allowed callback hosts (see src/events).
+  let delivery: Delivery | undefined;
+  let eventsStore: SubscriptionStore | undefined;
+  let healthTimer: NodeJS.Timeout | undefined;
+  if (eventsEnabled && approvalSecret) {
+    eventsStore = new SubscriptionStore(config.eventsPath, approvalSecret);
+    delivery = new Delivery({
+      store: eventsStore,
+      transport: httpsCallbackTransport({ allowedHosts: config.eventCallbackHosts, timeoutMs: 10_000, maxResponseBytes: 16 * 1024 }),
+      allowedHosts: config.eventCallbackHosts,
+    });
+    const ring = delivery;
+    const onApproval = (summary: string): void => ring.publish('approval.requested', { summary, action: 'approve_or_decline' });
+    if (mutations) {
+      mutations.onApprovalRequested = onApproval;
+      mutations.onCompleted = (summary, status) => ring.publish('action.completed', { summary, status });
+    }
+    catalogService.onApprovalRequested = onApproval;
+    if (speech) {
+      speech.onApprovalRequested = onApproval;
+      speech.onUrgent = (reason) => ring.publish('speech.urgent', { summary: 'An urgent announcement was made on an Echo.', reason });
+    }
+    // Announce a transition into a state the owner must act on, once per transition.
+    const watch = healthWatcher(deps.alexa.health(), (health) => ring.publish('session.attention', { summary: 'The Alexa session needs attention.', health }));
+    healthTimer = setInterval(() => watch(deps.alexa.health()), 15_000);
+    healthTimer.unref();
+  }
   const admin = createAdminHandler({
     baseUrl: config.publicBaseUrl,
     authenticate: (request) => issuer.authenticateAdmin(request),
@@ -198,13 +257,20 @@ export async function buildService(config: ServiceConfig, deps: ServiceDeps): Pr
       if (!(await admin(request, response))) await issuer.handle(request, response);
     },
     ...(mutations ? { mutations } : {}),
+    ...(config.personalReads ? { personalReads: true } : {}),
+    ...(speech ? { speech, urgentReasons: config.speakUrgentReasons } : {}),
     ...(catalogEnabled ? { catalog: catalogService } : {}),
+    ...(delivery ? { events: delivery } : {}),
+    pendingApprovals: (principal, at) => journal.pendingApprovals(principal, at, APPROVAL_TTL_MS),
     ...(modes ? { readsAllowed: modes.query === 'allow' } : {}),
   });
   return {
     server,
     close: () => {
       deps.alexa.stop();
+      if (healthTimer) clearInterval(healthTimer);
+      void delivery?.stop();
+      eventsStore?.close();
       oidcStore.close();
       journal.close();
     },

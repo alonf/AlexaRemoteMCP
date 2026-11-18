@@ -48,7 +48,7 @@ test('authorized client lists only the slice tools with schemas', async () => {
   try {
     const c = await client(s.url);
     const tools = await c.listTools();
-    assert.deepEqual(tools.tools.map((t) => t.name).sort(), ['find_device', 'get_device_state', 'list_devices']);
+    assert.deepEqual(tools.tools.map((t) => t.name).sort(), ['find_device', 'get_device_state', 'get_status', 'list_devices']);
     assert.ok(tools.tools.every((t) => t.inputSchema));
     await c.close();
   } finally { await s.stop(); }

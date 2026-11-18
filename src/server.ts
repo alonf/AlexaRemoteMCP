@@ -44,6 +44,10 @@ async function main(): Promise<void> {
     controlDevice: (id, parameters) => current().controlDevice(id, parameters),
     runRoutine: (device, routine) => current().runRoutine(device, routine),
     setDnd: (device, enabled) => current().setDnd(device, enabled),
+    speak: (serials, mode, text) => current().speak(serials, mode, text),
+    lists: () => current().lists(),
+    listItems: (listId, limit) => current().listItems(listId, limit),
+    reminders: () => current().reminders(),
   };
 
   const service = await buildService(config, {

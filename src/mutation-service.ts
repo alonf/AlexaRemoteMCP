@@ -82,6 +82,9 @@ export class MutationService {
     private readonly approvals?: ApprovalSigner,
   ) {}
 
+  onApprovalRequested?: (summary: string) => void;
+  onCompleted?: (summary: string, status: string) => void;
+
   private inventory: { at: number; body: unknown } | undefined;
 
   // The policy check needs the inventory only to classify the target; a short cache keeps write bursts from
@@ -128,7 +131,7 @@ export class MutationService {
 
     let approvedNonce: string | undefined;
     if (decision.mode === 'approve') {
-      const gate = await gateApproval({ signer: this.approvals, journal: this.journal, now: this.now }, context, targetId, operation, parameters, `${described.phrase} "${decision.label}"`, approval, process.env.CHAT_CONFIRMATION !== 'off');
+      const gate = await gateApproval({ signer: this.approvals, journal: this.journal, now: this.now, onApprovalRequested: this.onApprovalRequested }, context, targetId, operation, parameters, `${described.phrase} "${decision.label}"`, approval, process.env.CHAT_CONFIRMATION !== 'off');
       // Timing only (no identifiers): shows whether the wait before an action is the inventory lookup or the approval step.
       console.log(`mutation-timing policy_ms=${policyMs} gate_ms=${Date.now() - startedAt - policyMs} result=${'status' in gate ? gate.status : 'approved'}`);
       if ('status' in gate) return gate;
@@ -186,6 +189,7 @@ export class MutationService {
     } catch {
       // Recovery reports the incomplete record as unknown.
     }
+    try { this.onCompleted?.(`${described.phrase} "${decision.label}"`, outcome.status); } catch { /* the doorbell never blocks the reply */ }
     return {
       status: outcome.status,
       operationId,

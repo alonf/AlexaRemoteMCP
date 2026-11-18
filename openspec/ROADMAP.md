@@ -74,6 +74,21 @@ Every excluded or deferred end-user capability needs a documented reason and sco
 | §14 Future HA | Milestone E; only interfaces `AlexaAdapter`, `OperationStore`, `CredentialStore`, `CommandExecutor`, `Scheduler`, `EventSource` prepared |
 | §15 decisions | A resolves; remaining carried by B/C/D |
 
+## Future features (candidates, not planned in a milestone)
+
+Raised by the owner after Milestone B; each needs its own OpenSpec change and owner-approved live checks before any claim.
+
+| Candidate | Notes |
+|---|---|
+| `alexa-ask-albert-skill` | A custom Alexa skill ("Alexa, ask Albert to …") whose endpoint on this service verifies Amazon's request signature and hands the free text to an AI agent. The skill replies "on it" within its short time limit and the result comes back through the announce tool. It can stay in development stage on the owner's account. Everything the agent does still passes the device categories and approval gates. A virtual smart-home device ("Albert") covers fixed triggers only. |
+| `echo-announce-and-speak` | Speak or announce on chosen Echo devices; the best-valued next item. Not live-verified upstream. |
+| `pending-approvals-and-health-read-tool` | Gives a woken agent something to read after an events doorbell. Built as `get_status` (change `status-read-tool`). |
+| `action-completed-event` | Events notification when an approved or long action finishes. |
+| `lists-reminders-and-routines` | Read and add lists, reminders and notes; read and trigger routines. |
+| `alexa-text-command` | Text to Alexa+ with the reply read back if possible; always approved and journaled; reply retrieval unverified. |
+| `more-device-kinds` | Thermostat setpoint/mode, locks, garage doors, colour, scenes, volume; each with its own category and approval mode. |
+| `catalog-group-overrides-and-admin-journal` | Group-inherited overrides and journaling of admin edits. |
+
 ## Sequencing notes
 
 - Later changes are proposed with `openspec-propose` only after the prior milestone's evidence and decision exist.

@@ -106,6 +106,19 @@ export class SqliteJournal implements OperationStore {
     this.db.prepare('UPDATE approvals SET operation_id = ? WHERE nonce = ?').run(operationId, nonce);
   }
 
+  // Still-undecided approvals inside their lifetime, for one principal. Returns timings and the operation kind only.
+  pendingApprovals(principal: string, now: Date, ttlMs: number): Array<{ operation: string; requestedSecondsAgo: number; expiresInSeconds: number }> {
+    const rows = this.db
+      .prepare("SELECT operation, requested_at FROM approvals WHERE principal = ? AND decision = 'requested' ORDER BY requested_at")
+      .all(principal) as Array<{ operation: string; requested_at: string }>;
+    return rows.flatMap((row) => {
+      const age = now.getTime() - Date.parse(row.requested_at);
+      return age >= 0 && age < ttlMs
+        ? [{ operation: row.operation, requestedSecondsAgo: Math.floor(age / 1000), expiresInSeconds: Math.ceil((ttlMs - age) / 1000) }]
+        : [];
+    });
+  }
+
   approvalDecision(nonce: string): string | undefined {
     const row = this.db.prepare('SELECT decision FROM approvals WHERE nonce = ?').get(nonce) as { decision: string } | undefined;
     return row?.decision;

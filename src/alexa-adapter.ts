@@ -14,6 +14,10 @@ export interface AlexaProbeClient {
   executeSmarthomeDeviceAction(ids: string[], parameters: unknown, type: string, callback: Callback): void;
   executeAutomationRoutine(device: string, routine: object, callback: Callback): void;
   setDoNotDisturb(device: string, enabled: boolean, callback: Callback): void;
+  sendSequenceCommand(serialOrName: string | string[], command: string, value: unknown, callback: Callback): void;
+  getListsV2(callback: Callback): void;
+  getListItemsV2(listId: string, options: { limit: number }, callback: Callback): void;
+  getNotifications(cached: boolean, callback: Callback): void;
 }
 
 function read(invoke: (callback: Callback) => void): Promise<unknown> {
@@ -57,6 +61,18 @@ export class AlexaAdapter implements AlexaPort {
     return read((callback) => this.client.discoverSmarthomeDevice(callback));
   }
 
+  lists(): Promise<unknown> {
+    return read((callback) => this.client.getListsV2(callback));
+  }
+
+  listItems(listId: string, limit: number): Promise<unknown> {
+    return read((callback) => this.client.getListItemsV2(listId, { limit }, callback));
+  }
+
+  reminders(): Promise<unknown> {
+    return read((callback) => this.client.getNotifications(false, callback));
+  }
+
   controlDevice(id: string, parameters: unknown) {
     return awaitWriteResponse((callback) => this.client.executeSmarthomeDeviceAction(
       [id], parameters, 'APPLIANCE', callback,
@@ -69,5 +85,12 @@ export class AlexaAdapter implements AlexaPort {
 
   setDnd(device: string, enabled: boolean) {
     return awaitWriteResponse((callback) => this.client.setDoNotDisturb(device, enabled, callback));
+  }
+
+  // `speak` says the text on one device; `announce` plays it on every listed device, with Alexa's announcement chime.
+  speak(serials: string[], mode: 'speak' | 'announce', text: string) {
+    return awaitWriteResponse((callback) => this.client.sendSequenceCommand(
+      mode === 'speak' ? (serials[0] as string) : serials, mode === 'speak' ? 'speak' : 'announcement', text, callback,
+    ));
   }
 }

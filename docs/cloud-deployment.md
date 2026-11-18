@@ -48,6 +48,32 @@ Set after deployment and never committed (they are household-specific):
 
 The service refuses to start if a required setting is missing and names only the setting.
 
+- `EVENT_CALLBACK_HOSTS` (default `connectors.api.openai.com`; empty disables events): hosts the
+  server will send MCP Events webhooks to. A client with the read scope can `events/subscribe`
+  to `approval.requested` and `session.attention`. Each subscription is verified with a signed
+  challenge, lasts at most 24 hours, and is stored in `EVENTS_STORE_PATH` (default
+  `/home/data/events.sqlite`) with its signing key sealed under a key derived from the Key Vault
+  approval secret. Deliveries are signed (Standard Webhooks) and content-free doorbells: only a
+  short summary such as `turn on "Boiler"`, never approval ids, tokens or Alexa text. Callbacks
+  go only to allowed HTTPS hosts resolving to public addresses, with no redirects. Logs hold the
+  event, a hash of the client, the host and the status.
+- `SPEAK_POLICY` (`off` default, `approve` or `allow`) and `SPEAK_TARGETS` (comma-separated Echo
+  names or serials, `*` for all): enable `list_speakers` and `speak`, which say a plain text of
+  at most 250 characters on allowed Echo devices (`speak` on one, `announce` on several). With
+  `approve` the owner approves the exact text and device first. At most 5 texts per 10 minutes.
+  Unknown and disallowed devices get the same refusal. The journal and logs hold only a digest,
+  the target count and the outcome, never the text or device names. `accepted` means Alexa took
+  the request, not that it was heard.
+- `SPEAK_URGENT_REASONS` (comma-separated tokens, empty default, for example
+  `emergency,security,safety,health,family,time_critical`) and `SPEAK_URGENT_LIMIT` (default 2 per
+  10 minutes): a `speak` call with one of these `reason` values skips approval. The reason is
+  claimed by the agent and cannot be verified, so everything else still applies (allowed devices,
+  plain text, offline refusal) and a call over the urgent limit is refused, not downgraded. Each
+  one publishes a `speech.urgent` event (reason only) and is journaled as `speech-urgent:<reason>`.
+  - `LISTS_REMINDERS_READ=on` (default off): enables read-only `list_lists`, `get_list_items` and
+    `list_reminders` (read scope). Only ids, names, text, status and times are returned.
+  - `get_status` (read scope) returns session health and your pending approvals. The doorbell also
+    publishes `action.completed` (summary and status only) when a mutation finishes.
 ## Deploy
 
 1. Register an Entra app (web platform, redirect URI `<base URL>/signin/callback`) and note the

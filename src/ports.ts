@@ -15,6 +15,10 @@ export interface AlexaPort {
   controlDevice(id: string, parameters: unknown): Promise<WriteResponse>;
   runRoutine(device: string, routine: object): Promise<WriteResponse>;
   setDnd(device: string, enabled: boolean): Promise<WriteResponse>;
+  speak(serials: string[], mode: 'speak' | 'announce', text: string): Promise<WriteResponse>;
+  lists(): Promise<unknown>;
+  listItems(listId: string, limit: number): Promise<unknown>;
+  reminders(): Promise<unknown>;
 }
 
 export interface OperationStore {

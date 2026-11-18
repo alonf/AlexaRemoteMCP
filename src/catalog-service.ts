@@ -51,6 +51,8 @@ export class CatalogService {
     private readonly backup?: BackupFn,
   ) {}
 
+  onApprovalRequested?: (summary: string) => void;
+
   read(): Catalog {
     return this.store.get();
   }
@@ -99,7 +101,7 @@ export class CatalogService {
     const built = this.build(change);
     if ('reply' in built) return built.reply;
     const gate = await gateApproval(
-      { signer: this.signer, journal: this.journal, now: this.now },
+      { signer: this.signer, journal: this.journal, now: this.now, onApprovalRequested: this.onApprovalRequested },
       context, 'catalog', 'catalog-edit', built.normalized, summarize(built.normalized), approval,
     );
     if ('status' in gate) return gate as GateReply as CatalogReply;

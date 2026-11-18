@@ -25,6 +25,8 @@ export interface GateDeps {
   signer: ApprovalSigner | undefined;
   journal: SqliteJournal;
   now: () => Date;
+  // Rings the owner's notifier; receives only the human summary, never ids or tokens.
+  onApprovalRequested?: ((summary: string) => void) | undefined;
 }
 
 // Returns the nonce of a consumed approval, or the reply to send instead of acting. Shared by device writes and catalog edits.
@@ -53,6 +55,7 @@ export async function gateApproval(
     } catch {
       return { status: 'not_dispatched' };
     }
+    try { deps.onApprovalRequested?.(summary); } catch { /* a failed doorbell never blocks the approval */ }
     if (spoken) {
       return {
         status: 'confirmation_required',
